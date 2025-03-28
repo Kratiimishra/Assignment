@@ -1,0 +1,10 @@
+/app/app.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    postrotate
+        aws --endpoint-url=http://localhost:4566 s3 cp /app/app.log s3://my-logs/
+    endscript
+}
