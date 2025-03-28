@@ -1,0 +1,67 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/sirupsen/logrus"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+)
+
+var logger = logrus.New()
+
+func init() {
+	// Set log format and output file
+	file, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("Failed to open log file:", err)
+	}
+	logger.SetOutput(file)
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetLevel(logrus.DebugLevel)
+}
+
+func uploadToS3() {
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String("us-east-1"),
+		Endpoint: aws.String("http://localhost:4566"), // LocalStack S3 endpoint
+	}))
+
+	svc := s3.New(sess)
+	file, err := os.Open("app.log")
+	if err != nil {
+		logger.Error("Failed to open log file for S3 upload:", err)
+		return
+	}
+	defer file.Close()
+
+	_, err = svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String("my-logs"),
+		Key:    aws.String("app.log"),
+		Body:   file,
+	})
+	if err != nil {
+		logger.Error("Failed to upload log to S3:", err)
+	} else {
+		logger.Info("Log file successfully uploaded to S3")
+	}
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	logger.Info("Received request: ", r.URL.Path)
+	fmt.Fprintln(w, "Hello, World!")
+	uploadToS3()
+}
+
+func main() {
+	http.HandleFunc("/", handler)
+	logger.Info("Starting server on :8080")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		logger.Fatal("Server failed: ", err)
+	}
+}
